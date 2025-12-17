@@ -18,6 +18,7 @@ jobs:
     # We run 'npm ci' for the main project, then link the package we just prepared.
     - name: Install dependencies
       run: |
+        cd playwright
         npm ci
         
     - name: Install Playwright Browsers
