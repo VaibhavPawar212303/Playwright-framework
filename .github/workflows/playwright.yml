@@ -14,22 +14,31 @@ jobs:
       with:
         node-version: lts/*
 
-    # STEP 2: Install Main Project Dependencies and Link the Reporter
-    # We run 'npm ci' for the main project, then link the package we just prepared.
-    - name: Install dependencies
+    # 1. Build and Link the Reporter
+    - name: Setup Custom Reporter
+      run: |
+        cd node_package_report
+        npm ci
+        npm run build
+        npm link
+
+    # 2. Install Test Dependencies & Link Reporter (INSIDE 'playwright' folder)
+    - name: Install Playwright Project Dependencies
       run: |
         cd playwright
         npm ci
-        
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps
+        npm link play_with_ai
+        npx playwright install --with-deps
 
+    # 3. Run Tests (INSIDE 'playwright' folder)
     - name: Run Playwright tests
-      run: npx playwright test
+      run: |
+        cd playwright
+        npx playwright test
 
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
         name: playwright-report
-        path: playwright-report/
+        path: playwright/playwright-report/  # Note the updated path
         retention-days: 30
