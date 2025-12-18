@@ -1,5 +1,42 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
+// Regex to remove ANSI color codes for the text file
+const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 const colors = {
     reset: "\x1b[0m",
     bright: "\x1b[1m",
@@ -16,31 +53,59 @@ class MyCustomReporter {
         this.failed = 0;
         this.skipped = 0;
         this.timedOut = 0;
+        this.flaky = 0;
         this.totalDuration = 0;
+        this.slowTests = [];
         this.verbose = options.verbose || false;
-        if (this.verbose)
-            console.log(`${colors.cyan}ℹ Reporter setup (Verbose: true)${colors.reset}`);
+        this.slowTestThreshold = options.slowTestThreshold || 5000;
+        // --- CHANGE: Default to 'playwithAireporter/execution-log.txt' ---
+        this.logFile = options.logFile || 'playwithAireporter/execution-log.txt';
+        // 1. Get the folder path (e.g., "playwithAireporter")
+        const logDir = path.dirname(this.logFile);
+        // 2. Create the folder if it doesn't exist
+        if (logDir !== '.' && !fs.existsSync(logDir)) {
+            try {
+                fs.mkdirSync(logDir, { recursive: true });
+                if (this.verbose)
+                    console.log(`${colors.cyan}ℹ Created directory: ${logDir}${colors.reset}`);
+            }
+            catch (err) {
+                console.error(`${colors.red}✘ Failed to create directory ${logDir}: ${err}${colors.reset}`);
+            }
+        }
+        // 3. Create/Overwrite the file with a Header
+        const header = `Test Run Started: ${new Date().toLocaleString()}\n` +
+            `==================================================\n`;
+        fs.writeFileSync(this.logFile, header);
+        if (this.verbose) {
+            this.print(`${colors.cyan}ℹ Reporter setup (Log: ${this.logFile})${colors.reset}`);
+        }
+    }
+    // Helper to print to Console AND write to File
+    print(message) {
+        console.log(message);
+        const cleanMessage = message.replace(ansiRegex, '');
+        fs.appendFileSync(this.logFile, cleanMessage + '\n');
     }
     onBegin(config, suite) {
-        var _a;
+        var _a, _b;
         const workers = config.workers;
-        // FIX 1: Access headless state via the first project's config
-        // We use optional chaining (?.) and default to true (standard Playwright behavior)
         const isHeadless = ((_a = config.projects[0]) === null || _a === void 0 ? void 0 : _a.use.headless) !== false;
         const mode = isHeadless ? 'Headless' : 'Headed';
-        console.log(`\n${colors.bright}🚀 Starting Test Run${colors.reset}`);
-        console.log(`${colors.dim}--------------------------------------------------${colors.reset}`);
-        console.log(`${colors.cyan}Configuration:${colors.reset}`);
-        console.log(`  • Mode:    ${colors.yellow}${mode}${colors.reset}`);
-        console.log(`  • Workers: ${colors.yellow}${workers}${colors.reset}`);
-        console.log(`  • Tests:   ${suite.allTests().length}`);
-        console.log(`${colors.dim}--------------------------------------------------${colors.reset}`);
+        const retries = ((_b = config.projects[0]) === null || _b === void 0 ? void 0 : _b.retries) || 0;
+        this.print(`\n${colors.bright}🚀 Starting Test Run${colors.reset}`);
+        this.print(`${colors.dim}--------------------------------------------------${colors.reset}`);
+        this.print(`  • Mode:    ${colors.yellow}${mode}${colors.reset}`);
+        this.print(`  • Workers: ${colors.yellow}${workers}${colors.reset}`);
+        this.print(`  • Retries: ${colors.yellow}${retries}${colors.reset}`);
+        this.print(`  • Tests:   ${suite.allTests().length}`);
+        this.print(`${colors.dim}--------------------------------------------------${colors.reset}`);
     }
     onTestBegin(test) {
         var _a;
         if (this.verbose) {
             const browser = ((_a = test.parent.project()) === null || _a === void 0 ? void 0 : _a.name) || 'unknown';
-            console.log(`${colors.dim}  ▶ Starting: [${browser}] ${test.title}${colors.reset}`);
+            this.print(`${colors.dim}  ▶ Starting: [${browser}] ${test.title}${colors.reset}`);
         }
     }
     onTestEnd(test, result) {
@@ -48,39 +113,66 @@ class MyCustomReporter {
         this.totalDuration += result.duration;
         const browser = ((_a = test.parent.project()) === null || _a === void 0 ? void 0 : _a.name) || 'unknown';
         const browserTag = `${colors.magenta}[${browser}]${colors.reset}`;
+        const isSlow = result.duration > this.slowTestThreshold;
+        if (isSlow && result.status === 'passed') {
+            this.slowTests.push({ title: test.title, duration: result.duration, browser });
+        }
         if (result.status === 'passed') {
-            this.passed++;
-            console.log(`${colors.green}  ✔ ${browserTag} ${test.title} (${result.duration}ms)${colors.reset}`);
+            if (result.retry > 0) {
+                this.flaky++;
+                this.print(`${colors.yellow}  ⚠️  ${browserTag} ${test.title} (FLAKY - Passed on retry #${result.retry})${colors.reset}`);
+            }
+            else {
+                this.passed++;
+                const symbol = isSlow ? `${colors.yellow}✔ [SLOW]${colors.reset}` : `${colors.green}✔${colors.reset}`;
+                this.print(`  ${symbol} ${browserTag} ${test.title} (${result.duration}ms)`);
+            }
         }
         else if (result.status === 'failed') {
-            this.failed++;
-            console.log(`${colors.red}  ✘ ${browserTag} ${test.title}${colors.reset}`);
-            // FIX 2: Safely access the error message
+            if (result.retry < test.retries) {
+                this.print(`${colors.dim}  ✘ ${browserTag} ${test.title} (Attempt ${result.retry + 1} failed, retrying...)${colors.reset}`);
+            }
+            else {
+                this.failed++;
+                this.print(`${colors.red}  ✘ ${browserTag} ${test.title}${colors.reset}`);
+            }
             if (result.error) {
                 const errorMessage = result.error.message || result.error.stack || 'Unknown Error';
-                console.log(`${colors.red}    Error: ${errorMessage.split('\n')[0]}${colors.reset}`);
+                this.print(`${colors.red}    Error: ${errorMessage.split('\n')[0]}${colors.reset}`);
             }
         }
         else if (result.status === 'skipped') {
             this.skipped++;
-            console.log(`${colors.yellow}  ⚠ ${browserTag} ${test.title} (Skipped)${colors.reset}`);
+            this.print(`${colors.yellow}  ⚠ ${browserTag} ${test.title} (Skipped)${colors.reset}`);
         }
         else if (result.status === 'timedOut') {
             this.timedOut++;
-            console.log(`${colors.red}  ⏰ ${browserTag} ${test.title} (Timed Out)${colors.reset}`);
+            this.print(`${colors.red}  ⏰ ${browserTag} ${test.title} (Timed Out)${colors.reset}`);
         }
     }
     onEnd(result) {
         const durationSec = (this.totalDuration / 1000).toFixed(2);
-        console.log(`\n${colors.dim}--------------------------------------------------${colors.reset}`);
-        console.log(`${colors.bright}🏁 Test Run Finished: ${result.status.toUpperCase()}${colors.reset}`);
-        console.log(`${colors.dim}--------------------------------------------------${colors.reset}`);
-        console.log(`  ${colors.cyan}Total Tests:${colors.reset}  ${this.passed + this.failed + this.skipped + this.timedOut}`);
-        console.log(`  ${colors.green}Passed:${colors.reset}       ${this.passed}`);
-        console.log(`  ${colors.red}Failed:${colors.reset}       ${this.failed}`);
-        console.log(`  ${colors.yellow}Skipped:${colors.reset}      ${this.skipped}`);
-        console.log(`  ${colors.dim}Duration:${colors.reset}     ${durationSec}s`);
-        console.log(`${colors.dim}--------------------------------------------------${colors.reset}\n`);
+        this.print(`\n${colors.dim}--------------------------------------------------${colors.reset}`);
+        this.print(`${colors.bright}🏁 Test Run Finished: ${result.status.toUpperCase()}${colors.reset}`);
+        this.print(`${colors.dim}--------------------------------------------------${colors.reset}`);
+        if (this.slowTests.length > 0) {
+            this.print(`${colors.yellow}🐢 Slowest Tests (> ${this.slowTestThreshold}ms):${colors.reset}`);
+            this.slowTests
+                .sort((a, b) => b.duration - a.duration)
+                .slice(0, 5)
+                .forEach((t) => {
+                this.print(`  • ${t.duration}ms - [${t.browser}] ${t.title}`);
+            });
+            this.print(`${colors.dim}--------------------------------------------------${colors.reset}`);
+        }
+        this.print(`  ${colors.cyan}Total Tests:${colors.reset}  ${this.passed + this.failed + this.skipped + this.timedOut + this.flaky}`);
+        this.print(`  ${colors.green}Passed:${colors.reset}       ${this.passed}`);
+        this.print(`  ${colors.yellow}Flaky:${colors.reset}        ${this.flaky}`);
+        this.print(`  ${colors.red}Failed:${colors.reset}       ${this.failed}`);
+        this.print(`  ${colors.yellow}Skipped:${colors.reset}      ${this.skipped}`);
+        this.print(`  ${colors.dim}Duration:${colors.reset}     ${durationSec}s`);
+        this.print(`${colors.dim}--------------------------------------------------${colors.reset}\n`);
+        this.print(`${colors.cyan}📝 Logs saved to: ${this.logFile}${colors.reset}\n`);
     }
 }
 exports.default = MyCustomReporter;
