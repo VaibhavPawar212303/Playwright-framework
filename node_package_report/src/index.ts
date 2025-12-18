@@ -541,5 +541,4 @@ class PlayWithAIReporter implements Reporter {
     `;
   }
 }
-
 export default PlayWithAIReporter;
