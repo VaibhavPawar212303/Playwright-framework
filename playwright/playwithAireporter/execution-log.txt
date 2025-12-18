@@ -1,0 +1,45 @@
+Test Run Started: 12/18/2025, 10:45:20 PM
+==================================================
+
+🚀 Starting Test Run
+--------------------------------------------------
+  • Mode:    Headless
+  • Workers: 5
+  • Tests:   6
+--------------------------------------------------
+📡 Live Dashboard available at: http://localhost:8080
+  ✔ [SLOW] [chromium] get started link (11610ms)
+  ✔ [SLOW] [firefox] get started link (11112ms)
+  ✘ [webkit] has title (Attempt 1 failed, retrying...)
+    Error: Error: expect(page).toHaveTitle(expected) failed
+  ✘ [firefox] has title (Attempt 1 failed, retrying...)
+    Error: Error: expect(page).toHaveTitle(expected) failed
+  ✘ [chromium] has title (Attempt 1 failed, retrying...)
+    Error: Error: expect(page).toHaveTitle(expected) failed
+  ✔ [SLOW] [webkit] get started link (8025ms)
+  ✘ [chromium] has title (Attempt 2 failed, retrying...)
+    Error: Error: expect(page).toHaveTitle(expected) failed
+  ✘ [webkit] has title (Attempt 2 failed, retrying...)
+    Error: Error: expect(page).toHaveTitle(expected) failed
+  ✘ [firefox] has title (Attempt 2 failed, retrying...)
+    Error: Error: expect(page).toHaveTitle(expected) failed
+  ✘ [chromium] has title
+    Error: Error: expect(page).toHaveTitle(expected) failed
+  ✘ [webkit] has title
+    Error: Error: expect(page).toHaveTitle(expected) failed
+  ✘ [firefox] has title
+    Error: Error: expect(page).toHaveTitle(expected) failed
+
+--------------------------------------------------
+🏁 Test Run Finished: FAILED
+--------------------------------------------------
+  Total Tests:  6
+  Passed:       3
+  Failed:       3
+  Duration:     150.65s
+--------------------------------------------------
+
+📝 Logs saved to: playwithAireporter/execution-log.txt
+📊 Static HTML Report saved to: playwithAireporter/index.html
+
+📡 Live Server closed.
