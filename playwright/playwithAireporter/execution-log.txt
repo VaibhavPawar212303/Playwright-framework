@@ -1,4 +1,4 @@
-Test Run Started: 12/18/2025, 10:45:20 PM
+Test Run Started: 12/31/2025, 6:03:23 PM
 ==================================================
 
 🚀 Starting Test Run
@@ -8,15 +8,15 @@ Test Run Started: 12/18/2025, 10:45:20 PM
   • Tests:   6
 --------------------------------------------------
 📡 Live Dashboard available at: http://localhost:8080
-  ✔ [SLOW] [chromium] get started link (11610ms)
-  ✔ [SLOW] [firefox] get started link (11112ms)
+  ✔ [chromium] get started link (1143ms)
+  ✔ [firefox] get started link (2283ms)
+  ✔ [webkit] get started link (1698ms)
+  ✘ [chromium] has title (Attempt 1 failed, retrying...)
+    Error: Error: expect(page).toHaveTitle(expected) failed
   ✘ [webkit] has title (Attempt 1 failed, retrying...)
     Error: Error: expect(page).toHaveTitle(expected) failed
   ✘ [firefox] has title (Attempt 1 failed, retrying...)
     Error: Error: expect(page).toHaveTitle(expected) failed
-  ✘ [chromium] has title (Attempt 1 failed, retrying...)
-    Error: Error: expect(page).toHaveTitle(expected) failed
-  ✔ [SLOW] [webkit] get started link (8025ms)
   ✘ [chromium] has title (Attempt 2 failed, retrying...)
     Error: Error: expect(page).toHaveTitle(expected) failed
   ✘ [webkit] has title (Attempt 2 failed, retrying...)
@@ -36,7 +36,7 @@ Test Run Started: 12/18/2025, 10:45:20 PM
   Total Tests:  6
   Passed:       3
   Failed:       3
-  Duration:     150.65s
+  Duration:     59.81s
 --------------------------------------------------
 
 📝 Logs saved to: playwithAireporter/execution-log.txt

@@ -12,7 +12,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   // Use the package name here
-  reporter: [['play_with_ai', { outputDir: 'playwithAireporter',verbose: true}]],
+  reporter: [['play_with_ai', { outputDir: 'playwithAireporter',verbose: true}], ['./playwright-reporter.ts']],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     // baseURL: 'http://localhost:3000',
