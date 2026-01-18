@@ -1,4 +1,4 @@
-Test Run Started: 12/31/2025, 6:03:23 PM
+Test Run Started: 1/18/2026, 2:48:01 PM
 ==================================================
 
 🚀 Starting Test Run
@@ -8,9 +8,11 @@ Test Run Started: 12/31/2025, 6:03:23 PM
   • Tests:   6
 --------------------------------------------------
 📡 Live Dashboard available at: http://localhost:8080
-  ✔ [chromium] get started link (1143ms)
-  ✔ [firefox] get started link (2283ms)
-  ✔ [webkit] get started link (1698ms)
+  ✘ [chromium] get started link (Attempt 1 failed, retrying...)
+    Error: Error: page.goto: net::ERR_CONNECTION_RESET at https://playwright.dev/
+  ⚠️  [chromium] get started link (FLAKY - Passed on retry #1)
+  ✔ [firefox] get started link (3017ms)
+  ✔ [webkit] get started link (1190ms)
   ✘ [chromium] has title (Attempt 1 failed, retrying...)
     Error: Error: expect(page).toHaveTitle(expected) failed
   ✘ [webkit] has title (Attempt 1 failed, retrying...)
@@ -34,9 +36,9 @@ Test Run Started: 12/31/2025, 6:03:23 PM
 🏁 Test Run Finished: FAILED
 --------------------------------------------------
   Total Tests:  6
-  Passed:       3
+  Passed:       2
   Failed:       3
-  Duration:     59.81s
+  Duration:     61.62s
 --------------------------------------------------
 
 📝 Logs saved to: playwithAireporter/execution-log.txt
