@@ -3,6 +3,20 @@ import axios from 'axios';
 import fs from 'fs';
 import FormData from 'form-data';
 
+/**
+ * 🔥 FIX: Sanitize string for use in HTTP headers
+ * HTTP headers only allow ASCII characters (0x20-0x7E)
+ * This fixes the "Invalid character in header content" error
+ */
+const sanitizeHeaderValue = (value: string): string => {
+  if (!value) return '';
+  return value
+    .replace(/[^\x20-\x7E]/g, '-')  // Replace non-ASCII with dash (e.g., em dash — becomes -)
+    .replace(/-+/g, '-')             // Collapse multiple dashes
+    .replace(/^-|-$/g, '')           // Trim leading/trailing dashes
+    .trim();
+};
+
 // 🔥 PROJECT & TEST TRACKING LAYER
 class ProjectAndTestTracker {
   private projectsMap = new Map<string, {
@@ -50,7 +64,6 @@ class ProjectAndTestTracker {
     const test = project.tests.get(testTitle);
     if (!test) return;
 
-    // Only update if not already finalized
     if (test.finalResult === 'pending' || test.finalResult === 'running') {
       test.status = finalStatus;
       test.retries = retryCount;
@@ -570,7 +583,7 @@ class DataIntegrityValidator {
   }
 }
 
-// 🔥 DATABASE SYNC LAYER
+// 🔥 DATABASE SYNC LAYER - FIXED with header sanitization
 class DatabaseSyncManager {
   private syncLog: Array<{ testId: string; uniqueKey: string; timestamp: string; status: string; response: string }> = [];
   private failedSyncs = new Map<string, number>();
@@ -591,8 +604,9 @@ class DatabaseSyncManager {
           timeout: 30000,
           headers: {
             'Content-Type': 'application/json',
-            'X-Test-ID': testId,
-            'X-Unique-Key': uniqueKey,
+            // 🔥 FIX: Sanitize header values to remove non-ASCII characters (e.g., em dash —)
+            'X-Test-ID': sanitizeHeaderValue(testId),
+            'X-Unique-Key': sanitizeHeaderValue(uniqueKey),
             'X-Is-Final': String(payload.test_entry.is_final || false),
             'X-Timestamp': new Date().toISOString()
           }
@@ -729,7 +743,7 @@ interface TestPayload {
   build_id: number;
   session_id: string;
   test_id: string;
-  unique_test_key: string; // 🔥 NEW: Consistent key across retries
+  unique_test_key: string;
   spec_file: string;
   test_title: string;
   project: string;
@@ -748,7 +762,7 @@ interface TestPayload {
     status: string;
     expected_status: string;
     is_flaky: boolean;
-    is_final: boolean; // 🔥 NEW: Flag to mark final result
+    is_final: boolean;
     current_step?: string;
     progress?: {
       current_step: number;
@@ -826,7 +840,7 @@ class EnhancedPlaywrightReporter implements Reporter {
     result: TestResult;
     startTime: number;
     testId: string;
-    uniqueKey: string; // 🔥 NEW
+    uniqueKey: string;
     lastUpdate: number;
     updateTimer?: NodeJS.Timeout;
   }>();
@@ -839,7 +853,6 @@ class EnhancedPlaywrightReporter implements Reporter {
   private finalPayloads = new Map<string, TestPayload>();
   private testFinalStatuses = new Map<string, string>();
 
-  // 🔥 NEW: Track unique tests and final results sent
   private uniqueTests = new Map<string, {
     project: string;
     title: string;
@@ -848,7 +861,7 @@ class EnhancedPlaywrightReporter implements Reporter {
     lastRetry: number;
     sentFinal: boolean;
   }>();
-  private finalResultsSent = new Set<string>(); // Track by uniqueKey
+  private finalResultsSent = new Set<string>();
   private totalExpectedTests = 0;
 
   private readonly UPDATE_INTERVAL = 3000;
@@ -863,19 +876,16 @@ class EnhancedPlaywrightReporter implements Reporter {
     console.log(`📝 Live logs will be saved to: ${logFileName}`);
   }
 
-  // 🔥 NEW: Generate consistent unique key (project::title) - ignores retry
   private getUniqueTestKey(test: TestCase): string {
     const project = test.parent.project()?.name || 'Default';
     return `${project}::${test.title}`;
   }
 
-  // 🔥 NEW: Generate run-specific ID (for tracking individual retry attempts)
   private getRunId(test: TestCase, result: TestResult): string {
     const project = test.parent.project()?.name || 'Default';
     return `${project}::${test.title}::run${result.retry + 1}`;
   }
 
-  // Keep original getTestId for backward compatibility
   private getTestId(test: TestCase, result: TestResult): string {
     const runNum = result.retry + 1;
     const project = test.parent.project()?.name || 'Default';
@@ -885,8 +895,6 @@ class EnhancedPlaywrightReporter implements Reporter {
 
   async onBegin(config: FullConfig, suite: Suite) {
     this.allSuites = this.collectSuites(suite);
-    
-    // 🔥 NEW: Count unique tests properly
     this.totalExpectedTests = this.countUniqueTests(suite);
 
     console.log(`\n${'='.repeat(60)}`);
@@ -907,7 +915,7 @@ class EnhancedPlaywrightReporter implements Reporter {
           //@ts-ignore
           retry_count: config.retries,
           total_suites: this.allSuites.length,
-          total_tests: this.totalExpectedTests, // 🔥 Use correct count
+          total_tests: this.totalExpectedTests,
           started_at: new Date().toISOString(),
           status: 'running'
         })
@@ -939,7 +947,6 @@ class EnhancedPlaywrightReporter implements Reporter {
     return suites;
   }
 
-  // 🔥 NEW: Count unique tests across all projects
   private countUniqueTests(suite: Suite): number {
     const uniqueKeys = new Set<string>();
     
@@ -986,14 +993,12 @@ class EnhancedPlaywrightReporter implements Reporter {
     const runNum = result.retry + 1;
     const workerId = result.workerIndex;
     const testId = this.getTestId(test, result);
-    const uniqueKey = this.getUniqueTestKey(test); // 🔥 NEW
-    const runId = this.getRunId(test, result); // 🔥 NEW
+    const uniqueKey = this.getUniqueTestKey(test);
+    const runId = this.getRunId(test, result);
     const statusKey = `${project}-${test.title}-R${runNum}`;
 
-    // ✅ Register test in project tracker
     this.projectAndTestTracker.registerTestInProject(project, test.title);
 
-    // 🔥 NEW: Register unique test if not exists
     if (!this.uniqueTests.has(uniqueKey)) {
       this.uniqueTests.set(uniqueKey, {
         project,
@@ -1005,7 +1010,6 @@ class EnhancedPlaywrightReporter implements Reporter {
       });
     }
 
-    // 🔥 NEW: Update retry count
     const testInfo = this.uniqueTests.get(uniqueKey)!;
     testInfo.lastRetry = Math.max(testInfo.lastRetry, result.retry);
 
@@ -1013,17 +1017,17 @@ class EnhancedPlaywrightReporter implements Reporter {
     this.testStatusMap.set(statusKey, 'running');
     this.testStartTimes.set(statusKey, Date.now());
     this.testLogs.set(statusKey, { stdout: [], stderr: [] });
-    this.testSteps.set(runId, []); // 🔥 Use runId for steps
+    this.testSteps.set(runId, []);
 
     const activeTest = {
       test,
       result,
       startTime: Date.now(),
       testId,
-      uniqueKey, // 🔥 NEW
+      uniqueKey,
       lastUpdate: 0
     };
-    this.activeTests.set(runId, activeTest); // 🔥 Use runId
+    this.activeTests.set(runId, activeTest);
 
     const retryLabel = result.retry > 0 ? ` (Retry #${result.retry})` : '';
     const startMessage = `▶️  [W${workerId}] Starting: ${test.title} (${project})${retryLabel}`;
@@ -1033,7 +1037,7 @@ class EnhancedPlaywrightReporter implements Reporter {
     this.updateSuiteStats(test, 'started');
 
     await this.buildIdPromise;
-    this.startPeriodicUpdates(runId); // 🔥 Use runId
+    this.startPeriodicUpdates(runId);
   }
 
   private startPeriodicUpdates(runId: string) {
@@ -1041,7 +1045,6 @@ class EnhancedPlaywrightReporter implements Reporter {
     if (!activeTest) return;
 
     activeTest.updateTimer = setInterval(async () => {
-      // 🔥 NEW: Check if final already sent for this unique test
       if (this.finalResultsSent.has(activeTest.uniqueKey)) {
         this.stopPeriodicUpdates(runId);
         return;
@@ -1078,7 +1081,6 @@ class EnhancedPlaywrightReporter implements Reporter {
 
       const uniqueKey = activeTest.uniqueKey;
 
-      // 🔥 CRITICAL: Don't send progress if final already sent
       if (this.finalResultsSent.has(uniqueKey)) {
         this.stopPeriodicUpdates(runId);
         return;
@@ -1110,7 +1112,7 @@ class EnhancedPlaywrightReporter implements Reporter {
         build_id: id,
         session_id: sessionId,
         test_id: activeTest.testId,
-        unique_test_key: uniqueKey, // 🔥 NEW
+        unique_test_key: uniqueKey,
         spec_file: activeTest.test.location.file.split(/[\\/]/).pop() || 'unknown',
         test_title: activeTest.test.title,
         project: project,
@@ -1129,7 +1131,7 @@ class EnhancedPlaywrightReporter implements Reporter {
           status: 'running',
           expected_status: 'passed',
           is_flaky: activeTest.result.retry > 0,
-          is_final: false, // 🔥 NEW: NOT FINAL
+          is_final: false,
           progress: {
             current_step: currentStepNum,
             total_steps: totalSteps,
@@ -1153,7 +1155,7 @@ class EnhancedPlaywrightReporter implements Reporter {
           timeout: 10000,
           headers: {
             'Content-Type': 'application/json',
-            'X-Is-Final': 'false' // 🔥 NEW
+            'X-Is-Final': 'false'
           }
         })
       );
@@ -1195,7 +1197,7 @@ class EnhancedPlaywrightReporter implements Reporter {
   }
 
   onStepEnd(test: TestCase, result: TestResult, step: TestStep) {
-    const runId = this.getRunId(test, result); // 🔥 Use runId
+    const runId = this.getRunId(test, result);
     const stepData = this.extractAllSteps(step);
     const steps = this.testSteps.get(runId) || [];
     steps.push(stepData);
@@ -1255,22 +1257,20 @@ class EnhancedPlaywrightReporter implements Reporter {
     const workerId = result.workerIndex;
     const statusKey = `${project}-${test.title}-R${runNum}`;
     const testId = this.getTestId(test, result);
-    const uniqueKey = this.getUniqueTestKey(test); // 🔥 NEW
-    const runId = this.getRunId(test, result); // 🔥 NEW
+    const uniqueKey = this.getUniqueTestKey(test);
+    const runId = this.getRunId(test, result);
 
     console.log(`\n🔍 [TEST END] ${uniqueKey}`);
     console.log(`   Status: ${result.status}`);
     console.log(`   Retry: ${result.retry}/${test.retries || 0}`);
     console.log(`   Already sent final: ${this.finalResultsSent.has(uniqueKey)}`);
 
-    // Wait for pending updates to complete
     let waitCount = 0;
     while (this.pendingUpdates.has(runId) && waitCount < 30) {
       await new Promise(res => setTimeout(res, 50));
       waitCount++;
     }
 
-    // 🔥 Stop progress updates immediately
     this.stopPeriodicUpdates(runId);
     this.pendingUpdates.delete(runId);
     
@@ -1280,9 +1280,7 @@ class EnhancedPlaywrightReporter implements Reporter {
     
     this.testFinalStatuses.set(testId, finalStatus);
 
-    // 🔥 NEW: Update unique test info
     if (!this.uniqueTests.has(uniqueKey)) {
-      // Safety: register if somehow missed
       console.log(`⚠️  [LATE REGISTER] ${uniqueKey} was not pre-registered, adding now`);
       this.uniqueTests.set(uniqueKey, {
         project,
@@ -1298,10 +1296,9 @@ class EnhancedPlaywrightReporter implements Reporter {
     testInfo.finalStatus = finalStatus;
     testInfo.lastRetry = result.retry;
 
-    // ✅ Update project tracker with final result
     this.projectAndTestTracker.updateTestResult(project, test.title, finalStatus, result.retry);
 
-    this.activeTests.delete(runId); // 🔥 Use runId
+    this.activeTests.delete(runId);
 
     this.updateSuiteStats(test, result.status as any);
 
@@ -1310,7 +1307,6 @@ class EnhancedPlaywrightReporter implements Reporter {
     console.log(endMessage);
     this.writeLog(endMessage);
 
-    // 🔥 CRITICAL: Determine if this is the last attempt
     const maxRetries = test.retries || 0;
     const isLastAttempt = finalStatus === 'passed' || 
                           finalStatus === 'skipped' || 
@@ -1330,7 +1326,6 @@ class EnhancedPlaywrightReporter implements Reporter {
     }
   }
 
-  // 🔥 NEW: Extracted final result processing
   private async processFinalResult(
     test: TestCase, 
     result: TestResult, 
@@ -1339,13 +1334,11 @@ class EnhancedPlaywrightReporter implements Reporter {
     buildId: number,
     statusKey: string
   ) {
-    // 🔥 Double-check we haven't sent this yet (race condition guard)
     if (this.finalResultsSent.has(uniqueKey)) {
       console.log(`⚠️  [DEDUP] Skipping duplicate final for ${uniqueKey}`);
       return;
     }
 
-    // 🔥 Mark as sent BEFORE async operations to prevent race conditions
     this.finalResultsSent.add(uniqueKey);
     const testInfo = this.uniqueTests.get(uniqueKey)!;
     testInfo.sentFinal = true;
@@ -1414,8 +1407,8 @@ class EnhancedPlaywrightReporter implements Reporter {
       const payload: TestPayload = {
         build_id: buildId,
         session_id: sessionId,
-        test_id: uniqueKey, // 🔥 Use uniqueKey as primary ID
-        unique_test_key: uniqueKey, // 🔥 NEW
+        test_id: uniqueKey,
+        unique_test_key: uniqueKey,
         spec_file: test.location.file.split(/[\\/]/).pop() || 'unknown',
         test_title: test.title,
         project: project,
@@ -1434,7 +1427,7 @@ class EnhancedPlaywrightReporter implements Reporter {
           status: finalStatus,
           expected_status: 'passed',
           is_flaky: result.retry > 0,
-          is_final: true, // 🔥 NEW: MARK AS FINAL
+          is_final: true,
           progress: {
             current_step: steps.length,
             total_steps: steps.length,
@@ -1480,7 +1473,6 @@ class EnhancedPlaywrightReporter implements Reporter {
       const validation = TestDataValidator.validateTestPayload(payload);
       if (!TestDataValidator.logValidationResult(payload, validation)) {
         console.error(`   Skipping invalid payload for: ${payload.test_title}`);
-        // 🔥 Remove from sent set so it can be retried
         this.finalResultsSent.delete(uniqueKey);
         testInfo.sentFinal = false;
         return;
@@ -1501,7 +1493,6 @@ class EnhancedPlaywrightReporter implements Reporter {
 
     } catch (e: any) {
       console.error(`❌ Error processing final result for ${uniqueKey}: ${e.message}`);
-      // 🔥 Remove from sent set so it can be retried
       this.finalResultsSent.delete(uniqueKey);
       testInfo.sentFinal = false;
     }
@@ -1544,7 +1535,6 @@ class EnhancedPlaywrightReporter implements Reporter {
   async onEnd() {
     console.log(`\n⏳ Waiting for all uploads to complete...`);
 
-    // Stop all progress updates
     for (const runId of this.activeTests.keys()) {
       this.stopPeriodicUpdates(runId);
     }
@@ -1560,10 +1550,8 @@ class EnhancedPlaywrightReporter implements Reporter {
 
     await uploadQueue;
 
-    // 🔥 NEW: Print consistency check
     this.printConsistencyCheck();
 
-    // ✅ Log project and test summary
     this.projectAndTestTracker.logProjectSummary();
     this.projectAndTestTracker.saveProjectSummaryToFile('project-summary.json');
 
@@ -1594,8 +1582,8 @@ class EnhancedPlaywrightReporter implements Reporter {
           testTracking: this.dataTracker.getTrackerSummary(),
           projectTracking: projectSummary,
           totalTestsSaved: this.finalPayloads.size,
-          totalExpectedTests: this.totalExpectedTests, // 🔥 NEW
-          totalFinalResultsSent: this.finalResultsSent.size // 🔥 NEW
+          totalExpectedTests: this.totalExpectedTests,
+          totalFinalResultsSent: this.finalResultsSent.size
         })
       );
     } catch (e) {
@@ -1610,7 +1598,6 @@ class EnhancedPlaywrightReporter implements Reporter {
     console.log(`✅ Reporter completed - Session: ${sessionId}`);
   }
 
-  // 🔥 NEW: Print consistency check at the end
   private printConsistencyCheck() {
     console.log(`\n${'='.repeat(60)}`);
     console.log(`📊 CONSISTENCY CHECK`);
@@ -1627,7 +1614,6 @@ class EnhancedPlaywrightReporter implements Reporter {
       console.log(`\n⚠️  WARNING: Mismatch detected!`);
       console.log(`   Missing: ${this.totalExpectedTests - this.finalResultsSent.size} test(s)`);
       
-      // Find missing tests
       console.log(`\n   📋 Tests Status:`);
       for (const [uniqueKey, info] of this.uniqueTests) {
         const status = info.sentFinal ? '✅ SENT' : '❌ NOT SENT';
@@ -1636,7 +1622,6 @@ class EnhancedPlaywrightReporter implements Reporter {
       }
     }
     
-    // Group by project
     console.log(`\n📱 BY PROJECT:`);
     const byProject = new Map<string, { total: number; sent: number }>();
     for (const [uniqueKey, info] of this.uniqueTests) {
